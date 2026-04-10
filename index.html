@@ -265,5 +265,51 @@
 	<!-- Start of bodyEnd -->
     
     <!-- End of bodyEnd -->
+<!-- ada-text-patch -->
+<script>
+(function () {
+  var replacements = [
+    ["CEO ATA", "CEO ADA"],
+    ["Design and developed by @Kaaaz", "Designed by @Kaaaz"],
+    ["Design and developed by Kaaaz", "Designed by Kaaaz"]
+  ];
+  function patch(root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var t = node.nodeValue;
+      for (var i = 0; i < replacements.length; i++) {
+        if (t.indexOf(replacements[i][0]) !== -1) {
+          t = t.split(replacements[i][0]).join(replacements[i][1]);
+        }
+      }
+      if (t !== node.nodeValue) node.nodeValue = t;
+    }
+  }
+  function run() { patch(document.body); }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+  var mo = new MutationObserver(function (muts) {
+    for (var i = 0; i < muts.length; i++) {
+      var m = muts[i];
+      if (m.type === "characterData" && m.target) {
+        patch(m.target.parentNode || document.body);
+      } else {
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          var n = m.addedNodes[j];
+          if (n.nodeType === 1) patch(n);
+          else if (n.nodeType === 3) patch(n.parentNode || document.body);
+        }
+      }
+    }
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+  });
+})();
+</script>
 </body>
 </html>
