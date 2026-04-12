@@ -273,6 +273,8 @@
     ["Motion Design", "Development"],
     ["Graphics", "Development"],
     ["Services", ":D"],
+    ["Developing", "Development"],
+    ["time\u2014without", "time-without"],
     ["Design and developed by @Kaaaz", "Designed by @Kaaaz"],
     ["Design and developed by Kaaaz", "Designed by Kaaaz"]
   ];
@@ -303,6 +305,12 @@
         a.parentNode.replaceChild(span, a);
       }
     });
+  }
+
+  /* ========== 2b. REMOVE ELEMENTS ========== */
+  function removeElements(root) {
+    var el = (root.nodeType === 1 ? root : document.body).querySelector('.framer-ozbl7p[data-framer-name="Bottom"]');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
   /* ========== 3. SUCCESS MODAL ========== */
@@ -577,6 +585,7 @@
   function runAll() {
     patchText(document.body);
     unwrapKaaazLinks(document.body);
+    removeElements(document.body);
     if (isContactPage()) patchContactForm();
   }
 
@@ -597,6 +606,7 @@
         if (n.nodeType === 1) {
           patchText(n);
           unwrapKaaazLinks(n);
+          removeElements(n);
         } else if (n.nodeType === 3 && n.parentNode) {
           patchText(n.parentNode);
         }
