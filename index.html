@@ -266,48 +266,364 @@
 <!-- ada-text-patch -->
 <script>
 (function () {
-  var replacements = [
+  /* ========== 1. TEXT REPLACEMENTS (MutationObserver) ========== */
+  var textReplacements = [
     ["CEO ATA", "CEO ADA"],
     ["Design and developed by @Kaaaz", "Designed by @Kaaaz"],
     ["Design and developed by Kaaaz", "Designed by Kaaaz"]
   ];
-  function patch(root) {
+
+  function patchText(root) {
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     var node;
     while ((node = walker.nextNode())) {
       var t = node.nodeValue;
-      for (var i = 0; i < replacements.length; i++) {
-        if (t.indexOf(replacements[i][0]) !== -1) {
-          t = t.split(replacements[i][0]).join(replacements[i][1]);
+      for (var i = 0; i < textReplacements.length; i++) {
+        if (t.indexOf(textReplacements[i][0]) !== -1) {
+          t = t.split(textReplacements[i][0]).join(textReplacements[i][1]);
         }
       }
       if (t !== node.nodeValue) node.nodeValue = t;
     }
   }
-  function run() { patch(document.body); }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", run);
-  } else {
-    run();
+
+  /* ========== 2. REMOVE LINK FROM "Designed by @Kaaaz" ========== */
+  function unwrapKaaazLinks(root) {
+    var links = (root.nodeType === 1 ? root : document.body).querySelectorAll('a[href*="fremix.design"]');
+    links.forEach(function (a) {
+      if (a.textContent.indexOf("Kaaaz") !== -1) {
+        var span = document.createElement("span");
+        span.className = a.className;
+        span.setAttribute("data-styles-preset", a.getAttribute("data-styles-preset") || "");
+        span.textContent = a.textContent;
+        a.parentNode.replaceChild(span, a);
+      }
+    });
   }
+
+  /* ========== 3. SUCCESS MODAL ========== */
+  var modalCSS = document.createElement("style");
+  modalCSS.textContent = [
+    ".ada-toast{position:fixed;top:24px;right:24px;z-index:999999;padding:14px 40px 14px 16px;border-radius:6px;font-family:'Albert Sans',Inter,sans-serif;font-size:13px;font-weight:500;letter-spacing:.2px;line-height:1.5;max-width:360px;opacity:0;transform:translateX(20px);transition:opacity .3s ease,transform .3s ease;pointer-events:auto;border:1px solid;}",
+    ".ada-toast.ada-show{opacity:1;transform:translateX(0);}",
+    ".ada-toast .ada-close{position:absolute;top:10px;right:10px;background:none;border:none;font-size:16px;cursor:pointer;line-height:1;padding:0;}",
+    ".ada-toast .ada-close:hover{opacity:.7;}",
+    ".ada-toast.ada-toast-success{background:#f7f7f7;color:#1c1c1c;border-color:#1c1c1c;}",
+    ".ada-toast.ada-toast-success .ada-close{color:#1c1c1c;}",
+    ".ada-toast.ada-toast-error{background:#1c1c1c;color:#f7f7f7;border-color:#444;}",
+    ".ada-toast.ada-toast-error .ada-close{color:#999;}"
+  ].join("\n");
+  document.head.appendChild(modalCSS);
+
+  function showToast(message, type, duration) {
+    type = type || "error";
+    duration = duration || 5000;
+    // Remove existing toasts of the same type
+    document.querySelectorAll(".ada-toast.ada-toast-" + type).forEach(function (el) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    });
+    var m = document.createElement("div");
+    m.className = "ada-toast ada-toast-" + type;
+    m.innerHTML = message + ' <button class="ada-close">&times;</button>';
+    document.body.appendChild(m);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { m.classList.add("ada-show"); });
+    });
+    var autoHide = setTimeout(function () { removeToast(m); }, duration);
+    m.querySelector(".ada-close").addEventListener("click", function () {
+      clearTimeout(autoHide);
+      removeToast(m);
+    });
+  }
+
+  function showSuccessModal() { showToast("Success!", "success", 10000); }
+  function showError(msg) { showToast(msg, "error", 5000); }
+
+  function removeToast(m) {
+    m.classList.remove("ada-show");
+    setTimeout(function () { if (m.parentNode) m.parentNode.removeChild(m); }, 300);
+  }
+
+  /* ========== 4. CONTACT FORM LOGIC ========== */
+  var RATE_LIMIT_MS = 90000; // 1 minute 30 seconds
+  var STORAGE_KEY = "ada_last_form_submit";
+  var formPatched = false;
+
+  function getRemainingCooldown() {
+    try {
+      var last = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
+      var diff = Date.now() - last;
+      return diff < RATE_LIMIT_MS ? RATE_LIMIT_MS - diff : 0;
+    } catch (e) { return 0; }
+  }
+
+  function setLastSubmitTime() {
+    try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch (e) {}
+  }
+
+  function findFormFields() {
+    var inputs = document.querySelectorAll("input, textarea");
+    var fields = { name: null, email: null, message: null, other: [] };
+    inputs.forEach(function (el) {
+      var ph = (el.getAttribute("placeholder") || "").toLowerCase();
+      var nm = (el.getAttribute("name") || "").toLowerCase();
+      var label = ph || nm;
+      if (!fields.name && (label.indexOf("name") !== -1 || label.indexOf("nom") !== -1)) {
+        fields.name = el;
+      } else if (!fields.email && (label.indexOf("email") !== -1 || label.indexOf("mail") !== -1 || el.type === "email")) {
+        fields.email = el;
+      } else if (!fields.message && (el.tagName === "TEXTAREA" || label.indexOf("message") !== -1 || label.indexOf("comment") !== -1)) {
+        fields.message = el;
+      } else if (el.type !== "hidden" && el.type !== "submit") {
+        fields.other.push(el);
+      }
+    });
+    return fields;
+  }
+
+  function findSubmitButton() {
+    // Look for buttons/anchors containing "Submit", "Send", "Let's Start", "Get Started"
+    var candidates = document.querySelectorAll("button, a[data-framer-name='Simple Button'], [data-framer-name*='Button']");
+    for (var i = 0; i < candidates.length; i++) {
+      var txt = candidates[i].textContent.trim().toLowerCase();
+      if (txt === "submit" || txt === "send" || txt.indexOf("submit") !== -1 || txt.indexOf("send message") !== -1) {
+        return candidates[i];
+      }
+    }
+    // Fallback: look for a prominent button on the page that isn't nav
+    var allBtns = document.querySelectorAll('[data-framer-name="Simple Button"]');
+    for (var j = 0; j < allBtns.length; j++) {
+      var btnTxt = allBtns[j].textContent.trim().toLowerCase();
+      if (btnTxt.indexOf("start") !== -1 || btnTxt.indexOf("submit") !== -1 || btnTxt.indexOf("send") !== -1) {
+        return allBtns[j];
+      }
+    }
+    return null;
+  }
+
+  function addValidation(fields) {
+    if (fields.name) {
+      fields.name.setAttribute("required", "");
+      fields.name.setAttribute("minlength", "2");
+      if (!fields.name.getAttribute("name")) fields.name.setAttribute("name", "name");
+    }
+    if (fields.email) {
+      fields.email.setAttribute("required", "");
+      fields.email.setAttribute("type", "email");
+      if (!fields.email.getAttribute("name")) fields.email.setAttribute("name", "email");
+    }
+    if (fields.message) {
+      if (!fields.message.getAttribute("name")) fields.message.setAttribute("name", "message");
+    }
+  }
+
+  function isFormEmpty(fields) {
+    var nameVal = fields.name ? fields.name.value.trim() : "";
+    var emailVal = fields.email ? fields.email.value.trim() : "";
+    var messageVal = fields.message ? fields.message.value.trim() : "";
+    return !nameVal && !emailVal && !messageVal;
+  }
+
+  function isFormValid(fields) {
+    var errors = [];
+    if (fields.name) {
+      var n = fields.name.value.trim();
+      if (!n) errors.push("Name is required.");
+      else if (n.length < 2) errors.push("Name must be at least 2 characters.");
+    }
+    if (fields.email) {
+      var e = fields.email.value.trim();
+      if (!e) errors.push("Email is required.");
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) errors.push("Please enter a valid email address.");
+    }
+    return errors;
+  }
+
+  function getFieldWrapper(el) {
+    // Target the .framer-form-input-wrapper div directly wrapping the input
+    var node = el.closest(".framer-form-input-wrapper");
+    return node || el.parentElement || el;
+  }
+
+  function highlightInvalid(fields) {
+    [fields.name, fields.email].forEach(function (el) {
+      if (!el) return;
+      var val = el.value.trim();
+      var isEmail = el.getAttribute("type") === "email" || (el.getAttribute("placeholder") || "").toLowerCase().indexOf("email") !== -1;
+      var invalid = !val || (isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) || (!isEmail && val.length < 2);
+      var wrapper = getFieldWrapper(el);
+      wrapper.style.outline = invalid ? "2px solid #e53e3e" : "";
+      wrapper.style.outlineOffset = invalid ? "0px" : "";
+    });
+  }
+
+  function clearHighlights(fields) {
+    [fields.name, fields.email, fields.message].forEach(function (el) {
+      if (!el) return;
+      var wrapper = getFieldWrapper(el);
+      wrapper.style.outline = ""; wrapper.style.outlineOffset = "";
+    });
+  }
+
+  function submitForm(fields) {
+    var data = new FormData();
+    if (fields.name) data.append("name", fields.name.value.trim());
+    if (fields.email) data.append("email", fields.email.value.trim());
+    if (fields.message) data.append("message", fields.message.value.trim());
+    fields.other.forEach(function (el) {
+      var nm = el.getAttribute("name") || el.getAttribute("placeholder") || "field";
+      data.append(nm, el.value.trim());
+    });
+
+    return fetch("https://formsubmit.co/ajax/contact@adateam.io", {
+      method: "POST",
+      body: data,
+      headers: { "Accept": "application/json" }
+    }).then(function (res) { return res.json(); });
+  }
+
+  function patchContactForm() {
+    if (formPatched) return;
+    var fields = findFormFields();
+    var submitBtn = findSubmitButton();
+    if (!submitBtn) return; // not rendered yet
+    if (!fields.name && !fields.email && !fields.message) return; // no form fields yet
+
+    formPatched = true;
+    addValidation(fields);
+
+    // Remove existing href/onclick to prevent redirect
+    if (submitBtn.tagName === "A") {
+      submitBtn.removeAttribute("href");
+    }
+
+    function handleSubmit(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      // Re-find fields in case DOM changed
+      var currentFields = findFormFields();
+      if (!currentFields.name && !currentFields.email) currentFields = fields;
+      addValidation(currentFields);
+
+      // Check empty form
+      if (isFormEmpty(currentFields)) {
+        highlightInvalid(currentFields);
+        showError("Please fill in the form before submitting.");
+        return false;
+      }
+
+      // Validate
+      var errors = isFormValid(currentFields);
+      if (errors.length > 0) {
+        highlightInvalid(currentFields);
+        showError(errors.join("<br>"));
+        return false;
+      }
+      clearHighlights(currentFields);
+
+      // Rate limit
+      var cooldown = getRemainingCooldown();
+      if (cooldown > 0) {
+        var secs = Math.ceil(cooldown / 1000);
+        showError("Please wait " + secs + " seconds before submitting again.");
+        return false;
+      }
+
+      // Disable button
+      submitBtn.style.pointerEvents = "none";
+      submitBtn.style.opacity = "0.6";
+
+      submitForm(currentFields).then(function (res) {
+        setLastSubmitTime();
+        submitBtn.style.pointerEvents = "";
+        submitBtn.style.opacity = "";
+        showSuccessModal();
+        // Clear fields
+        [currentFields.name, currentFields.email, currentFields.message].concat(currentFields.other).forEach(function (el) {
+          if (el) el.value = "";
+        });
+      }).catch(function (err) {
+        submitBtn.style.pointerEvents = "";
+        submitBtn.style.opacity = "";
+        showError("Something went wrong. Please try again.");
+        console.error("Form submission error:", err);
+      });
+
+      return false;
+    }
+
+    submitBtn.addEventListener("click", handleSubmit, true);
+
+    // Also intercept any parent links
+    var parentLink = submitBtn.closest("a");
+    if (parentLink && parentLink !== submitBtn) {
+      parentLink.removeAttribute("href");
+      parentLink.addEventListener("click", handleSubmit, true);
+    }
+  }
+
+  function isContactPage() {
+    return window.location.pathname.indexOf("/contact") !== -1 ||
+           window.location.hash.indexOf("contact") !== -1;
+  }
+
+  /* ========== 5. MAIN OBSERVER ========== */
+  function runAll() {
+    patchText(document.body);
+    unwrapKaaazLinks(document.body);
+    if (isContactPage()) patchContactForm();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", runAll);
+  } else {
+    runAll();
+  }
+
   var mo = new MutationObserver(function (muts) {
     for (var i = 0; i < muts.length; i++) {
       var m = muts[i];
-      if (m.type === "characterData" && m.target) {
-        patch(m.target.parentNode || document.body);
-      } else {
-        for (var j = 0; j < m.addedNodes.length; j++) {
-          var n = m.addedNodes[j];
-          if (n.nodeType === 1) patch(n);
-          else if (n.nodeType === 3) patch(n.parentNode || document.body);
+      if (m.type === "characterData" && m.target && m.target.parentNode) {
+        patchText(m.target.parentNode);
+      }
+      for (var j = 0; j < m.addedNodes.length; j++) {
+        var n = m.addedNodes[j];
+        if (n.nodeType === 1) {
+          patchText(n);
+          unwrapKaaazLinks(n);
+        } else if (n.nodeType === 3 && n.parentNode) {
+          patchText(n.parentNode);
         }
       }
     }
+    if (isContactPage() && !formPatched) patchContactForm();
   });
+
   document.addEventListener("DOMContentLoaded", function () {
     mo.observe(document.body, { childList: true, subtree: true, characterData: true });
   });
+
+  // Detect SPA navigation (Framer uses History API)
+  var origPushState = history.pushState;
+  var origReplaceState = history.replaceState;
+  history.pushState = function () {
+    origPushState.apply(this, arguments);
+    formPatched = false;
+    setTimeout(function () { if (isContactPage()) patchContactForm(); }, 500);
+  };
+  history.replaceState = function () {
+    origReplaceState.apply(this, arguments);
+    formPatched = false;
+    setTimeout(function () { if (isContactPage()) patchContactForm(); }, 500);
+  };
+  window.addEventListener("popstate", function () {
+    formPatched = false;
+    setTimeout(function () { if (isContactPage()) patchContactForm(); }, 500);
+  });
 })();
 </script>
+
 </body>
 </html>
