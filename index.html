@@ -295,7 +295,6 @@
     ["ATA-team", "ADA-team"],
     ["Motion Design", "Development"],
     ["Graphics", "Development"],
-    ["Services", ":D"],
     ["Developing", "Development"],
     ["time\u2014without", "time-without"],
     ["Design and developed by @Kaaaz", "Designed by @Kaaaz"],
@@ -604,12 +603,138 @@
            window.location.hash.indexOf("contact") !== -1;
   }
 
+  /* ========== 4b. SERVICES NAV LINK → #services ANCHOR ========== */
+  var SERVICES_TARGET_TEXT = "don\u2019t merely rely on our claims";
+  var SERVICES_ID = "services";
+
+  function findServicesSection() {
+    var existing = document.getElementById(SERVICES_ID);
+    if (existing) return existing;
+    var headings = document.querySelectorAll("h1, h2");
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].textContent.trim().toLowerCase().indexOf(SERVICES_TARGET_TEXT) !== -1) {
+        var section = headings[i].closest('section[data-framer-name="Testimonial"]') ||
+                      headings[i].closest("section") ||
+                      headings[i];
+        return section;
+      }
+    }
+    return null;
+  }
+
+  function ensureServicesAnchor() {
+    var section = findServicesSection();
+    if (!section) return null;
+    if (section.id !== SERVICES_ID) section.id = SERVICES_ID;
+    section.style.scrollMarginTop = "80px";
+    return section;
+  }
+
+  function findServicesLinks() {
+    var results = [];
+    var anchors = document.querySelectorAll("a");
+    for (var i = 0; i < anchors.length; i++) {
+      var a = anchors[i];
+      if (a.__adaServicesBound) { results.push(a); continue; }
+      var txt = (a.textContent || "").trim().toLowerCase();
+      if (txt !== "services") continue;
+      var isNav = a.getAttribute("data-framer-name") === "Navigation Link" ||
+                  !!a.closest('[data-framer-name="Navigation"]') ||
+                  !!a.closest("nav");
+      if (isNav) results.push(a);
+    }
+    return results;
+  }
+
+  function isHomePath() {
+    var p = window.location.pathname.replace(/\/+$/, "");
+    return p === "" || p === "/index.html";
+  }
+
+  function bindServicesLink(a) {
+    if (a.__adaServicesBound) return;
+    a.__adaServicesBound = true;
+    a.setAttribute("href", "/#" + SERVICES_ID);
+    a.removeAttribute("data-framer-page-link-current");
+    var handler = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      if (!isHomePath()) {
+        window.location.href = "/#" + SERVICES_ID;
+        return false;
+      }
+      ensureServicesAnchor();
+      if (window.location.hash !== "#" + SERVICES_ID) {
+        history.pushState(null, "", "#" + SERVICES_ID);
+      }
+      scrollToServices(true);
+      return false;
+    };
+    a.addEventListener("click", handler, true);
+    a.addEventListener("pointerdown", handler, true);
+    a.addEventListener("mousedown", handler, true);
+  }
+
+  function rewriteServicesLinks() {
+    findServicesLinks().forEach(bindServicesLink);
+  }
+
+  function getScrollRoot() {
+    var de = document.documentElement;
+    var body = document.body;
+    if (de && de.scrollHeight > de.clientHeight) return de;
+    if (body && body.scrollHeight > body.clientHeight) return body;
+    return de;
+  }
+
+  function scrollToServices(smooth) {
+    var section = ensureServicesAnchor();
+    if (!section) return false;
+    var root = getScrollRoot();
+    var rect = section.getBoundingClientRect();
+    var currentScroll = root.scrollTop || window.pageYOffset || 0;
+    var y = rect.top + currentScroll - 80;
+    try {
+      window.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" });
+    } catch (err) {
+      root.scrollTop = y;
+    }
+    // Fallback in case Framer's router resets scroll
+    setTimeout(function () {
+      var r2 = section.getBoundingClientRect();
+      if (Math.abs(r2.top - 80) > 5) {
+        var y2 = r2.top + (root.scrollTop || window.pageYOffset || 0) - 80;
+        try { window.scrollTo({ top: y2, behavior: smooth ? "smooth" : "auto" }); }
+        catch (e) { root.scrollTop = y2; }
+      }
+    }, 300);
+    return true;
+  }
+
+  window.adaScrollToServices = function () { return scrollToServices(true); };
+
+  window.addEventListener("hashchange", function () {
+    if (window.location.hash === "#" + SERVICES_ID) scrollToServices(true);
+  });
+
   /* ========== 5. MAIN OBSERVER ========== */
   function runAll() {
     patchText(document.body);
     unwrapKaaazLinks(document.body);
     removeElements(document.body);
+    ensureServicesAnchor();
+    rewriteServicesLinks();
     if (isContactPage()) patchContactForm();
+    if (window.location.hash === "#" + SERVICES_ID) {
+      var attempts = 0;
+      var tryScroll = function () {
+        attempts++;
+        var ok = scrollToServices(false);
+        if (!ok && attempts < 20) setTimeout(tryScroll, 100);
+      };
+      setTimeout(tryScroll, 50);
+    }
   }
 
   if (document.readyState === "loading") {
@@ -635,6 +760,8 @@
         }
       }
     }
+    ensureServicesAnchor();
+    rewriteServicesLinks();
     if (isContactPage() && !formPatched) patchContactForm();
   });
 
