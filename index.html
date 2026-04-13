@@ -13,12 +13,12 @@
     <!-- End of headStart -->
 	<meta name="viewport" content="width=device-width">
 	<meta name="generator" content="Framer b47b624">
-	<title>GreyPixel - Cleanest Agency Template</title>
+	<title>ADA-team</title>
     <meta name="description" content="Discover GreyPixel, the ultimate monochrome agency template crafted for branding and design agencies. Experience a clean, innovative theme with a minimalist design that perfectly showcases your creativity and professionalism.">
     <meta name="framer-search-index" content="https://framerusercontent.com/sites/6hjqgwuIIzkHr4Dydl9HWr/searchIndex-Bs1HHYYF16ig.json">
     <meta name="framer-search-index-fallback" content="https://framerusercontent.com/sites/6hjqgwuIIzkHr4Dydl9HWr/searchIndex-7VD8TFKzBHZQ.json">
-    <link href="https://framerusercontent.com/images/AC82mI6D263nyB6ah4fQkuDLNIw.png" rel="icon" media="(prefers-color-scheme: light)">
-    <link href="https://framerusercontent.com/images/AC82mI6D263nyB6ah4fQkuDLNIw.png" rel="icon" media="(prefers-color-scheme: dark)">
+    <link href="https://framerusercontent.com/images/wdhElGFfUgDHylrlSZkJjILTT0.svg" rel="icon" type="image/svg+xml" media="(prefers-color-scheme: light)">
+    <link href="https://framerusercontent.com/images/wdhElGFfUgDHylrlSZkJjILTT0.svg" rel="icon" type="image/svg+xml" media="(prefers-color-scheme: dark)">
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="GreyPixel - Cleanest Agency Template">
@@ -266,6 +266,29 @@
 <!-- ada-text-patch -->
 <script>
 (function () {
+  /* ========== 0. FORCE DOCUMENT TITLE + FAVICON ========== */
+  var FORCED_TITLE = "ADA-team";
+  var FORCED_ICON = "https://framerusercontent.com/images/wdhElGFfUgDHylrlSZkJjILTT0.svg";
+
+  function forceTitle() {
+    if (document.title !== FORCED_TITLE) document.title = FORCED_TITLE;
+  }
+  function forceFavicon() {
+    var links = document.querySelectorAll('link[rel~="icon"]');
+    links.forEach(function (l) {
+      if (l.getAttribute("href") !== FORCED_ICON) l.setAttribute("href", FORCED_ICON);
+    });
+  }
+  forceTitle();
+  forceFavicon();
+
+  var titleEl = document.querySelector("title");
+  if (titleEl) {
+    new MutationObserver(forceTitle).observe(titleEl, { childList: true, characterData: true, subtree: true });
+  }
+  new MutationObserver(function () { forceTitle(); forceFavicon(); })
+    .observe(document.head, { childList: true, subtree: true });
+
   /* ========== 1. TEXT REPLACEMENTS (MutationObserver) ========== */
   var textReplacements = [
     ["CEO ATA", "CEO ADA"],
